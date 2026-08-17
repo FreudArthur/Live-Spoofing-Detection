@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, cast
 
 import torch
 from PIL import Image
@@ -24,8 +24,14 @@ def build_transforms(train: bool = False, image_size: int = 224) -> transforms.C
             [
                 transforms.RandomResizedCrop(image_size),
                 transforms.RandomHorizontalFlip(),
+                # Variations de couleur : crucial pour distinguer les attaques
+                # écran/imprimé qui dégradent ou décalent les couleurs du visage.
+                transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
                 transforms.ToTensor(),
                 transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD),
+                # Efface aléatoirement une petite zone : rend le modèle plus robuste
+                # et moins dépendant des artefacts locaux.
+                transforms.RandomErasing(p=0.3, scale=(0.02, 0.1)),
             ]
         )
     return transforms.Compose(
@@ -66,7 +72,8 @@ def predict_pil_image(
     image_size: int = 224,
 ) -> Tuple[str, float, Dict[str, float]]:
     transform = build_transforms(train=False, image_size=image_size)
-    input_tensor = transform(image.convert("RGB")).unsqueeze(0).to(device)
+    img_tensor = cast(torch.Tensor, transform(image.convert("RGB")))
+    input_tensor = img_tensor.unsqueeze(0).to(device)
 
     model.eval()
     with torch.no_grad():
